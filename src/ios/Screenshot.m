@@ -12,6 +12,8 @@
 #import <Cordova/CDV.h>
 #import "Screenshot.h"
 
+@import Photos;
+
 @implementation Screenshot
 
 @synthesize webView;
@@ -63,5 +65,64 @@
 	};
 	CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:jsonObj];
 	[self.commandDelegate sendPluginResult:pluginResult callbackId:[command callbackId]];
+}
+
+- (void)saveToAlbum:(CDVInvokedUrlCommand*)command
+{
+	NSString *filename = [command.arguments objectAtIndex:0];
+    NSString *album = [command.arguments objectAtIndex:1];
+    
+    __block PHFetchResult *photosAsset;
+    __block PHAssetCollection *collection;
+    __block PHObjectPlaceholder *placeholder;
+    
+    UIImage *image = [self getScreenshot];
+
+    // Find the album
+    PHFetchOptions *fetchOptions = [[PHFetchOptions alloc] init];
+    fetchOptions.predicate = [NSPredicate predicateWithFormat:@"title = %@", album];
+    collection = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum
+                                                          subtype:PHAssetCollectionSubtypeAny
+                                                          options:fetchOptions].firstObject;
+    // Create the album
+    if (!collection)
+    {
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            PHAssetCollectionChangeRequest *createAlbum = [PHAssetCollectionChangeRequest creationRequestForAssetCollectionWithTitle: album];
+            placeholder = [createAlbum placeholderForCreatedAssetCollection];
+        } completionHandler:^(BOOL success, NSError *error) {
+            if (success)
+            {
+                PHFetchResult *collectionFetchResult = [PHAssetCollection fetchAssetCollectionsWithLocalIdentifiers:@[placeholder.localIdentifier]
+                                                                                                                options:nil];
+                collection = collectionFetchResult.firstObject;
+            }
+        }];
+    }
+
+    // Save to the album
+    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+        PHAssetChangeRequest *assetRequest = [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+        placeholder = [assetRequest placeholderForCreatedAsset];
+        photosAsset = [PHAsset fetchAssetsInAssetCollection:collection options:nil];
+        PHAssetCollectionChangeRequest *albumChangeRequest = [PHAssetCollectionChangeRequest changeRequestForAssetCollection:collection
+                                                                                                                      assets:photosAsset];
+        [albumChangeRequest addAssets:@[placeholder]];
+    } completionHandler:^(BOOL success, NSError *error) {
+        if (!success) {
+            NSLog(@"Error creating album: %@", error);
+        }
+    }];
+
+    CDVPluginResult* pluginResult = nil;
+    NSDictionary *jsonObj = [ [NSDictionary alloc]
+        initWithObjectsAndKeys :
+        @"true", @"success",
+        nil
+    ];
+
+    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:jsonObj];
+    NSString* callbackId = command.callbackId;
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
 }
 @end
