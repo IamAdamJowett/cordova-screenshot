@@ -30,5 +30,13 @@ module.exports = {
 			callback && callback(error);
 		}, "Screenshot", "getScreenshotAsURI", [quality]);
 
+	},
+
+	saveToAlbum: function(callback, name, album) {
+		exec(function(res){
+			callback && callback(null, res);
+		}, function(error){
+			callback && callback(error);
+		}, "Screenshot", "saveToAlbum", [name, album]);
 	}
 };

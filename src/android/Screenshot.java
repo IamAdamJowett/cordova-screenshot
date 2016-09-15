@@ -42,11 +42,13 @@ public class Screenshot extends CordovaPlugin {
     private String mFormat;
     private String mFileName;
     private Integer mQuality;
+    private String mAlbum;
 
     protected final static String[] PERMISSIONS = {Manifest.permission.WRITE_EXTERNAL_STORAGE};
     public static final int PERMISSION_DENIED_ERROR = 20;
     public static final int SAVE_SCREENSHOT_SEC = 0;
     public static final int SAVE_SCREENSHOT_URI_SEC = 1;
+    public static final int SAVE_SCREENSHOT_ALB_SEC = 2;
 
     @Override
     public Object onMessage(String id, Object data) {
@@ -54,9 +56,11 @@ public class Screenshot extends CordovaPlugin {
             Bitmap bitmap = (Bitmap) data;
             if (bitmap != null) {
                 if (mAction.equals("saveScreenshot")) {
-                    saveScreenshot(bitmap, mFormat, mFileName, mQuality);
+                    saveScreenshot(bitmap, mFormat, mFileName, mQuality, null);
                 } else if (mAction.equals("getScreenshotAsURI")) {
                     getScreenshotAsURI(bitmap, mQuality);
+                } else if (mAction.equals("saveToAlbum")) {
+                    saveScreenshot(bitmap, "jpg", mFileName, null, mAlbum);
                 }
             }
         }
@@ -93,9 +97,15 @@ public class Screenshot extends CordovaPlugin {
         this.cordova.getActivity().sendBroadcast(mediaScanIntent);
     }
 
-    private void saveScreenshot(Bitmap bitmap, String format, String fileName, Integer quality) {
+    private void saveScreenshot(Bitmap bitmap, String format, String fileName, Integer quality, String album) {
         try {
-            File folder = new File(Environment.getExternalStorageDirectory(), "Pictures");
+            String path = "Pictures";
+
+            if (album != null && !album.equals("")) {
+                path = path + "/" + album; 
+            }
+
+            File folder = new File(Environment.getExternalStorageDirectory(), album);
             if (!folder.exists()) {
                 folder.mkdirs();
             }
@@ -158,6 +168,7 @@ public class Screenshot extends CordovaPlugin {
         mFormat = (String) mArgs.get(0);
         mQuality = (Integer) mArgs.get(1);
         mFileName = (String) mArgs.get(2);
+        mAlbum = null;
 
         super.cordova.getActivity().runOnUiThread(new Runnable() {
             @Override
@@ -165,11 +176,26 @@ public class Screenshot extends CordovaPlugin {
                 if (mFormat.equals("png") || mFormat.equals("jpg")) {
                     Bitmap bitmap = getBitmap();
                     if (bitmap != null) {
-                        saveScreenshot(bitmap, mFormat, mFileName, mQuality);
+                        saveScreenshot(bitmap, mFormat, mFileName, mQuality, mAlbum);
                     }
                 } else {
                     mCallbackContext.error("format " + mFormat + " not found");
 
+                }
+            }
+        });
+    }
+
+    public void saveToAlbum() throws JSONException {
+        mFileName = (String) mArgs.get(0);
+        mAlbum = (String) mArgs.get(1);
+
+        super.cordova.getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Bitmap bitmap = getBitmap();
+                if (bitmap != null) {
+                    saveScreenshot(bitmap, "jpg", mFileName, null, mAlbum);
                 }
             }
         });
@@ -212,8 +238,14 @@ public class Screenshot extends CordovaPlugin {
                 PermissionHelper.requestPermissions(this, SAVE_SCREENSHOT_URI_SEC, PERMISSIONS);
             }
             return true;
-        }
-        callbackContext.error("action not found");
+        } else if (action.equals("saveToAlbum")) {
+            if(PermissionHelper.hasPermission(this, PERMISSIONS[0])) {
+                saveToAlbum();
+            } else {
+                PermissionHelper.requestPermissions(this, SAVE_SCREENSHOT_ALB_SEC, PERMISSIONS);
+            }
+            return true;
+        }        callbackContext.error("action not found");
         return false;
     }
 
@@ -235,6 +267,9 @@ public class Screenshot extends CordovaPlugin {
                 break;
             case SAVE_SCREENSHOT_URI_SEC:
                 getScreenshotAsURI();
+                break;
+            case SAVE_SCREENSHOT_ALB_SEC:
+                saveToAlbum();
                 break;
         }
     }
